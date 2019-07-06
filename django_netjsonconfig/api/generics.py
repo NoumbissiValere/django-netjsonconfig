@@ -1,7 +1,9 @@
+from django.core.exceptions import ValidationError
 from rest_framework.generics import CreateAPIView, ListAPIView, RetrieveAPIView, get_object_or_404
 from rest_framework.response import Response
 
 from ..tasks import subscribe
+from ..utils import get_remote_template_data
 
 
 class BaseTemplateDetailView(RetrieveAPIView):
@@ -55,6 +57,66 @@ class BaseListTemplateView(ListAPIView):
         self.list_serializer.Meta.model = self.template_model
         serializer = self.list_serializer(data, many=True)
         return Response(serializer.data)
+
+
+class BaseCreateTemplateView(CreateAPIView):
+    """
+    API used to create external template.
+    This API will be used at the template library
+    backend repo
+    """
+    def save_template(self, template, import_url, request):
+        template.full_clean()
+        template.save()
+        subscriber_url = '{0}://{1}'.format(request.META.get('wsgi.url_scheme'),
+                                            request.get_host())
+        subscribe.delay(template.id, import_url, subscriber_url, subscribe=True)
+
+    def post(self, request, *args, **kwargs):
+        import_url = request.POST.get('url', None)
+        data = get_remote_template_data(import_url)
+        errors = {}
+        if data['type'] == 'vpn':
+            ca = self.ca_model(**data['vpn']['ca'])
+            try:
+                ca.full_clean()
+                ca.save()
+            except ValidationError:
+                ca = self.ca_model.objects.get(pk=ca.id)
+            data['vpn']['cert']['ca'] = ca
+            cert = self.cert_model(**data['vpn']['cert'])
+            try:
+                cert.full_clean()
+                cert.save()
+            except ValidationError:
+                cert = self.cert_model.objects.get(pk=cert.id)
+            data['vpn']['ca'] = ca
+            data['vpn']['cert'] = cert
+            vpn = self.vpn_model(**data['vpn'])
+            try:
+                vpn.full_clean()
+                vpn.save()
+            except ValidationError:
+                vpn = self.vpn_model.objects.get(name=vpn.name)
+            data['vpn'] = vpn
+            template = self.template_model(**data)
+            try:
+                self.save_template(template, import_url, request)
+            except ValidationError as e:
+                errors.update({
+                    'template_errors': e.messages
+                })
+                return Response(data=errors, status=500)
+        else:
+            template = self.template_model(**data)
+            try:
+                self.save_template(template, import_url, request)
+            except ValidationError as e:
+                errors.update({
+                    'template_errors': e.messages
+                })
+                return Response(data=errors, status=500)
+        return Response(status=200)
 
 
 class BaseTemplateSubscriptionView(CreateAPIView):

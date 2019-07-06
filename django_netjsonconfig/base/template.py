@@ -1,11 +1,9 @@
 from collections import OrderedDict
 
-import requests
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
-from requests.exceptions import ConnectionError
 from taggit.managers import TaggableManager
 
 from ..settings import DEFAULT_AUTO_CERT
@@ -158,24 +156,6 @@ class AbstractTemplate(BaseConfig):
 
     def get_context(self):
         return self.default_values or {}
-
-    def _get_remote_template_data(self):
-        """
-        Gets the template data from the
-        remote serialization API
-        """
-        try:
-            response = requests.get(self.url)
-        except ConnectionError:
-            raise ValidationError({'url': 'Connections to the server with this URL has issues'})
-        if response.status_code == 404:
-            raise ValidationError({'url': 'URL is not reachable'})
-        else:
-            try:
-                data = response.json()
-            except ValueError:
-                raise ValidationError({'url': 'The content of this URL is not useful'})
-            return data
 
     def _set_field_values(self, data):
         """

@@ -1,3 +1,5 @@
+from __future__ import absolute_import, unicode_literals
+
 from celery.decorators import periodic_task
 from celery.schedules import crontab
 from django_x509.models import Ca, Cert
@@ -9,6 +11,7 @@ from .base.tag import AbstractTaggedTemplate, AbstractTemplateTag
 from .base.template import AbstractTemplate
 from .base.vpn import AbstractVpn, AbstractVpnClient
 from .tasks import base_sync_template_content
+from .utils import get_remote_template_data
 
 
 class Config(TemplatesVpnMixin, AbstractConfig):
@@ -66,7 +69,7 @@ class Template(AbstractTemplate):
 
     def clean(self):
         if self.sharing == 'import':
-            data = self._get_remote_template_data()
+            data = get_remote_template_data(self.url)
             self._set_field_values(data)
         super(Template, self).clean()
 

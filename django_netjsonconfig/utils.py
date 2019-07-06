@@ -1,10 +1,12 @@
 import logging
 
+import requests
 from django.conf.urls import url
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404 as base_get_object_or_404
 from django.utils.crypto import get_random_string
+from requests.exceptions import ConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +154,9 @@ def get_api_urls(views_module):
         url(r'^api/v1/templates/synchronize/$',
             views_module.synchronize_template,
             name='synchronize_template'),
+        url(r'^api/v1/templates/create/$',
+            views_module.create_template,
+            name='create_template'),
         url(r'^api/v1/templates/(?P<uuid>[^/]+)/$',
             views_module.template_detail,
             name='template_detail'),
@@ -167,3 +172,22 @@ def get_random_key():
     generates a device key of 32 characters
     """
     return get_random_string(length=32)
+
+
+def get_remote_template_data(remote_url):
+    """
+    Gets the template data from the
+    remote serialization API
+    """
+    try:
+        response = requests.get(remote_url)
+    except ConnectionError:
+        raise ValidationError({'url': 'Connections to the server with this URL has issues'})
+    if response.status_code == 404:
+        raise ValidationError({'url': 'URL is not reachable'})
+    else:
+        try:
+            data = response.json()
+        except ValueError:
+            raise ValidationError({'url': 'The content of this URL is not useful'})
+        return data
